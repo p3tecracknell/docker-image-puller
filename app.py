@@ -22,13 +22,14 @@ def main():
 
 @app.route('/images/pull', methods=['POST'])
 def image_puller():
-    if not request.args['token'] or not request.args['image'] or not request.args['host']:
+    if not request.args['token'] or not request.args['image'] or not request.args['prefix']:
         return jsonify(success=False, error="Missing parameters"), 400
 
     if request.args['token'] != os.environ['TOKEN']:
         return jsonify(success=False, error="Invalid token"), 403
 
-    host = request.args['host']
+    prefix = request.args['prefix']
+    host = prefix + '.' + os.environ['DOMAIN']
     env = 'VIRTUAL_HOST=' + host
     image = request.args['image']
     image_split = image.split(':')
