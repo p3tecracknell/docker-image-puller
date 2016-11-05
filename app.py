@@ -22,38 +22,39 @@ def main():
 
 @app.route('/images/pull', methods=['POST'])
 def image_puller():
-    if not request.args['token'] or not request.args['image']:
+    if not request.args['token'] or not request.args['image'] or not request.args['host']:
         return jsonify(success=False, error="Missing parameters"), 400
 
     if request.args['token'] != os.environ['TOKEN']:
         return jsonify(success=False, error="Invalid token"), 403
 
+    host = request.args['host']
+    env = 'VIRTUAL_HOST=' + host
     image = request.args['image']
     image_split = image.split(':')
     image_name = image_split[0]
     image_tag = image_split[1] if len(image_split) == 2 else 'latest'
 
-    restart_containers = True if request.args['restart_containers'] == "true" else False
-
     old_containers = []
     for cont in docker.containers():
-        if re.match(image_name + r'.*', cont['Image']):
-            cont = docker.inspect_container(container=cont['Id'])
+        cont = docker.inspect_container(container=cont['Id'])
+        envs = cont['Config']['Env']
+        if env in envs:
             old_containers.append(cont)
-
-    if len(old_containers) is 0:
-        return jsonify(success=False, error="No running containers found with the specified image"), 404
 
     print ('Updating', str(len(old_containers)), 'containers with', image, 'image')
 
     print ('\tPulling new image...')
     docker.pull(image_name, tag=image_tag)
+    new_containers = []
 
-    if restart_containers is False:
-        return jsonify(success=True), 200
+    if len(old_containers) is 0:
+        print ('\tNo old containers, creating new')
+        environment = ['VIRTUAL_HOST=' + host]
+        new_cont = docker.create_container(image=image, environment=environment)
+        new_containers.append(new_cont)
 
     print ('\tCreating new containers...')
-    new_containers = []
     for cont in old_containers:
         if 'HOSTNAME' in os.environ and os.environ['HOSTNAME'] == cont['Id']:
             return jsonify(success=False, error="You can't restart the container where the puller script is running"), 403
@@ -66,6 +67,7 @@ def image_puller():
 
     print ('\tStarting new containers...')
     for cont in new_containers:
+        print(cont)
         docker.start(container=cont['Id'])
 
     print ('\tRemoving old containers...')
